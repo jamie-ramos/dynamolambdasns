@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: A SAM template that deploys a Lambda function triggered by changes to DynamoDB table. It then creates an SNS topic subscribed to the Lambda to trigger an email to be sent.
+Globals:
+    Function:
+        Timeout: 5
+
+Resources:
+
+    ReadDynamoDBEvent:
+        Type: AWS::Serverless::Function 
+        Properties:
+            CodeUri: s3://bucket/file.zip
+            Handler: index.lambda_handler
+            Runtime: python3.9
+            Events:
+                DynamoDBEvent:
+                    Type: DynamoDB
+                    Properties:
+                        Stream:
+                            !GetAtt DynamoDBTable.StreamArn
+                        StartingPosition: TRIM_HORIZON
+                        BatchSize: 10
+            Policies:
+                - SNSPublishMessagePolicy:
+                    TopicName: !GetAtt SNSTopic.TopicName
+            Environment:
+                Variables:
+                    TOPIC_ARN: !Ref SNSTopic
+
+    SNSTopic:
+        Type: AWS::SNS::Topic
+        Properties:
+            Subscription:
+                - Endpoint: "email@email.com"
+                  Protocol: "email"
+
+    DynamoDBTable:
+        Type: 'AWS::DynamoDB::Table'
+        Properties:
+            StreamSpecification:
+                StreamViewType: NEW_AND_OLD_IMAGES # Other options:  NEW_IMAGE | OLD_IMAGE | NEW_AND_OLD_IMAGES | KEYS_ONLY | More info: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_StreamSpecification.html
+            ProvisionedThroughput:
+                WriteCapacityUnits: 5
+                ReadCapacityUnits: 5
+            AttributeDefinitions:
+                - AttributeName: id
+                  AttributeType: S
+            KeySchema:
+                - KeyType: HASH
+                  AttributeName: id
